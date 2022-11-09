@@ -9,12 +9,14 @@ from django.contrib.auth.models import User
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth import login, authenticate
 from django.contrib.auth.decorators import login_required
+from django.db.models import F
 
 
 @login_required(login_url='login')
 def create_short(request):
     form = CreateUrlForm()
     links = Url.objects.filter(user=request.user)
+
     if request.method == 'POST':
         form = CreateUrlForm(request.POST)
         if form.is_valid():
@@ -22,10 +24,9 @@ def create_short(request):
             url.user = request.user
             url.save()
             url = form.save()
+            url.is_expired()
             url.generate_short_url()
-            print(url.short)
 
-            print("success")
     context = {
         'links': links,
         'form': form,
@@ -35,12 +36,14 @@ def create_short(request):
 
 def page_redirect(request, url):
     url_object = get_object_or_404(Url, short=url)
-    if url_object.active is True:
+    context = {}
+    if url_object.active is True and url_object.click_current < url_object.click_limit:
+        url_object.increment_click_current()
         response = redirect(url_object.long)
         response.status_code = 307
         return response
     else:
-        context = {}
+
         return render(request, 'service/not_found.html', context)
 
 
@@ -84,6 +87,7 @@ def logout_user(request):
 
 
 def delete_url(request, url):
+    """Deletes url specified with request"""
     url = Url.objects.get(short=url)
     if request.method == "POST":
         url.delete()
@@ -93,6 +97,7 @@ def delete_url(request, url):
 
 
 def toggle_url(request, url):
+    """Toggles status of url specified with request"""
     url = Url.objects.get(short=url)
     if request.method == "POST":
         url.toggle_active()
@@ -101,10 +106,16 @@ def toggle_url(request, url):
     return render(request, 'service/home.html', context)
 
 
-def change_expiration_time(request, url, datetime):
+def change_expiration_time(request, url):
+    """Changes expiration date of url specified in request"""
     url = Url.objects.get(short=url)
-    if request.method == "POST":
-        url.set_datetime(datetime)
-        return redirect('/')
-    context = {}
+    form = ModifyUrlForm(instance=url)
+
+    if request.method == 'POST':
+        form = ModifyUrlForm(request.POST, instance=url)
+        if form.is_valid():
+            form.save()
+            return redirect('/')
+
+    context = {'form': form}
     return render(request, 'service/home.html', context)

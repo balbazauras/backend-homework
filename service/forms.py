@@ -14,7 +14,19 @@ class CreateUrlForm(ModelForm):
 
     class Meta:
         model = Url
-        fields = ['long', 'expiration_time']
+        fields = ['long', 'expiration_time', 'click_limit']
+
+
+class ModifyUrlForm(ModelForm):
+    expiration_time = forms.DateTimeField(
+        widget=forms.TextInput(
+            attrs={'type': 'datetime-local'}
+        )
+    )
+
+    class Meta:
+        model = Url
+        fields = ['expiration_time']
 
 
 class UserRegistrationForm(UserCreationForm):
