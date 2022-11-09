@@ -4,8 +4,6 @@ services:
     build: .
     volumes:
       - .:/django
-    ports:
-      - 8000:8000
     image: urlshortener:django
     container_name: django_container
-    command: python3 manage.py runserver 0.0.0.0:8000
+    command: python3 manage.py runserver
