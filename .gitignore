@@ -1,5 +1,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
-.env
+venv/
 db.sqlite3  
+Dockerfile
+docker-compose.yml
+requirements.txt
+commands.txt
+.dockerignore.
+*.env
