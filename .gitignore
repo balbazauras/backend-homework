@@ -3,9 +3,6 @@ __pycache__/
 *$py.class
 venv/
 db.sqlite3  
-Dockerfile
-docker-compose.yml
 requirements.txt
 commands.txt
-.dockerignore.
 *.env
