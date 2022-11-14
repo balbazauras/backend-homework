@@ -1,50 +1,94 @@
-from django.shortcuts import render
-from django.shortcuts import redirect
-from .forms import *
-from django.shortcuts import get_object_or_404
-from .forms import UserCreationForm
-from django.contrib.auth import authenticate, login, logout
+import time
+from functools import wraps
+
 from django.contrib import messages
-from django.contrib.auth.models import User
-from django.contrib.auth.forms import AuthenticationForm
-from django.contrib.auth import login, authenticate
+from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.db.models import F
+from django.contrib.auth.forms import AuthenticationForm
+
+from django.shortcuts import get_object_or_404, redirect, render
+
+from .forms import *
+from .forms import UserCreationForm
+from .utils import get_ip, get_referer
 
 
-@login_required(login_url='login')
-def create_short(request):
-    form = CreateUrlForm()
-    links = Url.objects.filter(user=request.user)
-
-    if request.method == 'POST':
-        form = CreateUrlForm(request.POST)
-        if form.is_valid():
-            url = form.save(commit=False)
-            url.user = request.user
-            url.save()
-            url = form.save()
-            url.is_expired()
-            url.generate_short_url()
-
-    context = {
-        'links': links,
-        'form': form,
-    }
-    return render(request, 'service/home.html', context)
+def timer(func):
+    @wraps(func)
+    def wrapper(request, *args, **kwargs):
+        start = time.time()
+        result = func(request, *args, **kwargs)
+        clicks = get_object_or_404(
+            Url, short_url=kwargs['short_url']).click_set.all()
+        click = clicks.latest('created_at')
+        duration = (time.time() - start) * 1000
+        click.save_redirect_time(duration)
+        return result
+    return wrapper
 
 
-def page_redirect(request, url):
-    url_object = get_object_or_404(Url, short=url)
-    context = {}
-    if url_object.active is True and url_object.click_current < url_object.click_limit:
-        url_object.increment_click_current()
-        response = redirect(url_object.long)
+def home(request):
+    if request.user.is_authenticated:
+        create_url_form = CreateUrlForm()
+        urls = Url.objects.filter(user=request.user)
+        if request.method == 'POST':
+            url_creation_form = CreateUrlForm(request.POST)
+            if url_creation_form.is_valid():
+                url = url_creation_form.save(commit=False)
+                url.user = request.user
+                url.save()
+                url.is_expired()
+                url.generate_short_url_base58()
+            else:
+                print("wtf")
+                messages.info(request, "Date is not correct ")
+        context = {
+            'user': request.user,
+            'urls': urls,
+            'create_url_form': create_url_form,
+        }
+        return render(request, 'service/home.html', context)
+    else:
+        create_url_form = CreateUrlForm()
+        if request.method == 'POST':
+            url_creation_form = CreateUrlForm(request.POST)
+            if url_creation_form.is_valid():
+                url = url_creation_form.save(commit=False)
+
+                url.save()
+                url.is_expired()
+                url.generate_short_url_base58()
+                messages.info(request, "Your new short url: ")
+                messages.info(
+                    request, "http://127.0.0.1:8000/r/"+url.short_url)
+
+        context = {
+            'user': request.user,
+            'create_url_form': create_url_form,
+        }
+        return render(request, 'service/home.html', context)
+
+
+@timer
+def page_redirect(request, short_url):
+    url_object = get_object_or_404(Url, short_url=short_url)
+    if url_object.active is not True:
+        context = {'message': 'Url is deactivated'}
+        return render(request, 'service/not_found.html', context)
+    elif url_object.get_number_of_clicks() >= url_object.click_limit:
+        context = {'message': 'Click limit has been reached'}
+        return render(request, 'service/not_found.html', context)
+    elif url_object.expiration_time < timezone.now():
+        context = {'message': 'Link has expired'}
+        return render(request, 'service/not_found.html', context)
+    else:
+        referer = get_referer(request)
+        ip = get_ip(request)
+        click = Click()
+        click.save(url_object, referer, ip)
+        response = redirect(url_object.long_url)
         response.status_code = 307
         return response
-    else:
-
-        return render(request, 'service/not_found.html', context)
 
 
 def register_page(request):
@@ -52,8 +96,6 @@ def register_page(request):
         form = UserRegistrationForm(request.POST)
         if form.is_valid():
             form.save()
-            messages.success(
-                request, f'Your account has been created. You can log in now!')
             return redirect('login')
     else:
         form = UserRegistrationForm()
@@ -86,36 +128,47 @@ def logout_user(request):
     return redirect('login')
 
 
-def delete_url(request, url):
+@login_required(login_url='login')
+def delete_url(request, short_url):
     """Deletes url specified with request"""
-    url = Url.objects.get(short=url)
+    url = Url.objects.get(short_url=short_url)
     if request.method == "POST":
         url.delete()
+        messages.info(request, 'Link has been deleted')
         return redirect('/')
     context = {}
     return render(request, 'service/home.html', context)
 
 
-def toggle_url(request, url):
+@login_required(login_url='login')
+def toggle_url(request, short_url):
     """Toggles status of url specified with request"""
-    url = Url.objects.get(short=url)
+    url = Url.objects.get(short_url=short_url)
     if request.method == "POST":
         url.toggle_active()
+        messages.info(request, 'Link status has been changed')
         return redirect('/')
     context = {}
     return render(request, 'service/home.html', context)
 
 
-def change_expiration_time(request, url):
+@login_required(login_url='login')
+def change_expiration_time(request, short_url):
     """Changes expiration date of url specified in request"""
-    url = Url.objects.get(short=url)
-    form = ModifyUrlForm(instance=url)
-
+    url = Url.objects.get(short_url=short_url)
+    form = UpdateExpirationUrlForm(instance=url)
     if request.method == 'POST':
-        form = ModifyUrlForm(request.POST, instance=url)
+        form = UpdateExpirationUrlForm(request.POST, instance=url)
         if form.is_valid():
             form.save()
+            messages.info(request, 'Date has been changed')
             return redirect('/')
-
     context = {'form': form}
     return render(request, 'service/home.html', context)
+
+
+@login_required(login_url='login')
+def info_page(request, short_url):
+    clicks = get_object_or_404(Url, short_url=short_url).click_set.all()
+    context = {'clicks': clicks}
+    return render(request, 'service/info.html', context)
