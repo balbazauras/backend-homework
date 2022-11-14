@@ -1,4 +1,3 @@
-# base 58 "abcdefghijkmnopqrstuvwxyz123456789ABCDEFGHJKLMNPQRSTUVWXYZ"
 KEYS = "4muLFMEdn8wUe9Qjcvr1PyBTo6HkX3hWxaGZNJiV5tSbDC7zgRYK2spAqf"
 VALUES = [n+1 for n in range(0, len(KEYS))]
 STARTING_STRING = "n6jf45o"
