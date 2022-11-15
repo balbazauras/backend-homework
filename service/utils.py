@@ -5,7 +5,6 @@ STARTING_STRING = "n6jf45o"
 
 def get_short_url_base58(id):
     id = id+STARTING_STRING_ID
-    print(STARTING_STRING_ID)
     shortURL = ""
     while(id > 0):
         shortURL += KEYS[id % len(KEYS)]

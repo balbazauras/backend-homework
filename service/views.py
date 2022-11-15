@@ -39,9 +39,6 @@ def home(request):
                 url.save()
                 url.is_expired()
                 url.generate_short_url_base58()
-            else:
-                print("wtf")
-                messages.info(request, "Date is not correct ")
         context = {
             'user': request.user,
             'urls': urls,
